@@ -1,0 +1,23 @@
+# Ambiente
+.env
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Docker
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# Uploads locais (Etapa 7)
+app/uploads/
+
+# OS
+.DS_Store
