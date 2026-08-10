@@ -7,7 +7,7 @@
 API de gestão de manutenção aeronáutica para uma oficina certificada,
 desenvolvida como projeto de portfólio.
 
-## Status atual: Etapa 6 — Peças + Estoque
+## Status atual: Etapa 7 — Upload de Arquivos
 
 - [x] Estrutura de pastas (Clean Architecture)
 - [x] Configuração via `.env` (Pydantic Settings)
@@ -22,7 +22,8 @@ desenvolvida como projeto de portfólio.
 - [x] Ordens de Serviço: numeração automática (SEQUENCE), máquina de estados de status, mecânico/inspetor validados por papel
 - [x] Inspeções: 50h/100h/anual/especial/progressiva, vinculadas a uma OS, responsável validado como Inspetor
 - [x] Peças + Estoque: saldo controlado só por movimentações (livro-razão), bloqueio de saldo negativo
-- [x] Testes unitários: segurança (hash/JWT), CPF/CNPJ, schema de Motor, máquina de estados da OS, datas de Inspeção, quantidade de Movimentação
+- [x] Anexos: upload polimórfico (aeronave/OS/cliente/inspeção), abstração de storage pronta para S3, validação de tipo/tamanho
+- [x] Testes unitários: segurança (hash/JWT), CPF/CNPJ, schema de Motor, máquina de estados da OS, datas de Inspeção, quantidade de Movimentação, LocalStorageBackend
 - [ ] Clientes (Etapa 2)
 - [ ] Aeronaves + Motores (Etapa 3)
 - [ ] Ordens de Serviço (Etapa 4)
@@ -132,6 +133,23 @@ docker compose exec api pytest -v
 | DELETE | `/pecas/{id}`                 | Remove peça (bloqueado se houver movimentações)                | admin                        |
 | POST   | `/movimentacoes-estoque`      | Registra entrada/saída (ajusta saldo atomicamente)             | admin, inspetor, mecanico    |
 | GET    | `/movimentacoes-estoque`      | Histórico (filtros: `peca_id`, `tipo`, `ordem_servico_id`)      | admin, inspetor, mecanico    |
+
+## Endpoints de anexos (Etapa 7)
+
+| Método | Rota                      | Descrição                                                     | Permissão                  |
+|--------|---------------------------|-------------------------------------------------------------------|------------------------------|
+| POST   | `/anexos`                 | Upload (multipart/form-data: `entidade_tipo`, `entidade_id`, `file`, `descricao`) | admin, inspetor, mecanico |
+| GET    | `/anexos`                 | Lista (filtros: `entidade_tipo`, `entidade_id`)                    | admin, inspetor, mecanico    |
+| GET    | `/anexos/{id}`            | Metadados de um anexo                                               | admin, inspetor, mecanico    |
+| GET    | `/anexos/{id}/download`   | Baixa o arquivo                                                     | admin, inspetor, mecanico    |
+| DELETE | `/anexos/{id}`            | Remove o anexo (banco + arquivo em disco)                           | admin, inspetor              |
+
+Tipos de arquivo aceitos: PDF, JPG, PNG, DOC, DOCX. Tamanho máximo
+configurável via `MAX_UPLOAD_SIZE_MB` no `.env` (padrão: 10MB).
+
+`entidade_tipo` aceita: `aeronave`, `ordem_servico`, `cliente`,
+`inspecao` — o `entidade_id` deve ser o UUID de um registro existente
+daquele tipo (validado no upload).
 
 Máquina de estados do `status`:
 

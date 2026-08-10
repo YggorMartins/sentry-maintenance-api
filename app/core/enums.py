@@ -40,3 +40,10 @@ class TipoInspecao(str, enum.Enum):
 class TipoMovimentacao(str, enum.Enum):
     ENTRADA = "entrada"
     SAIDA = "saida"
+
+
+class TipoEntidadeAnexo(str, enum.Enum):
+    AERONAVE = "aeronave"
+    ORDEM_SERVICO = "ordem_servico"
+    CLIENTE = "cliente"
+    INSPECAO = "inspecao"

@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config.settings import settings
 from app.routers import aeronave as aeronave_router
+from app.routers import anexo as anexo_router
 from app.routers import auth as auth_router
 from app.routers import cliente as cliente_router
 from app.routers import inspecao as inspecao_router
@@ -41,6 +42,7 @@ app.include_router(ordem_servico_router.router)
 app.include_router(inspecao_router.router)
 app.include_router(peca_router.router)
 app.include_router(movimentacao_router.router)
+app.include_router(anexo_router.router)
 
 
 @app.get("/health", tags=["Health"])

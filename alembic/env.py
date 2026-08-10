@@ -18,6 +18,7 @@ from app.database.session import Base
 # no Base.metadata antes do autogenerate rodar.
 from app.models import (  # noqa: F401
     aeronave,
+    anexo,
     cliente,
     inspecao,
     motor,

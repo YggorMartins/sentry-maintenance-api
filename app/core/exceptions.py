@@ -94,3 +94,15 @@ class PecaEmUsoError(Exception):
 
 class EstoqueInsuficienteError(Exception):
     """Quantidade em estoque insuficiente para esta saída."""
+
+
+class AnexoNotFoundError(Exception):
+    """Anexo não encontrado."""
+
+
+class EntidadeReferenciadaNotFoundError(Exception):
+    """A entidade referenciada pelo anexo (aeronave/OS/cliente/inspeção) não existe."""
+
+
+class ArquivoInvalidoError(Exception):
+    """Tipo de arquivo não suportado ou tamanho acima do limite permitido."""
