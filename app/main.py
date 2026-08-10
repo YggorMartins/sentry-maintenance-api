@@ -14,7 +14,9 @@ from app.routers import auth as auth_router
 from app.routers import cliente as cliente_router
 from app.routers import inspecao as inspecao_router
 from app.routers import motor as motor_router
+from app.routers import movimentacao as movimentacao_router
 from app.routers import ordem_servico as ordem_servico_router
+from app.routers import peca as peca_router
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -37,6 +39,8 @@ app.include_router(motor_router.router)
 app.include_router(aeronave_router.router)
 app.include_router(ordem_servico_router.router)
 app.include_router(inspecao_router.router)
+app.include_router(peca_router.router)
+app.include_router(movimentacao_router.router)
 
 
 @app.get("/health", tags=["Health"])

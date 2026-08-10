@@ -78,3 +78,19 @@ class OrdemServicoNaoEditavelError(Exception):
 
 class InspecaoNotFoundError(Exception):
     """Inspeção não encontrada."""
+
+
+class PecaAlreadyExistsError(Exception):
+    """Já existe uma peça cadastrada com esse código."""
+
+
+class PecaNotFoundError(Exception):
+    """Peça não encontrada."""
+
+
+class PecaEmUsoError(Exception):
+    """Peça não pode ser removida pois possui movimentações de estoque."""
+
+
+class EstoqueInsuficienteError(Exception):
+    """Quantidade em estoque insuficiente para esta saída."""

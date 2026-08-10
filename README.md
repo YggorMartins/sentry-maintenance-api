@@ -7,7 +7,7 @@
 API de gestão de manutenção aeronáutica para uma oficina certificada,
 desenvolvida como projeto de portfólio.
 
-## Status atual: Etapa 5 — Inspeções
+## Status atual: Etapa 6 — Peças + Estoque
 
 - [x] Estrutura de pastas (Clean Architecture)
 - [x] Configuração via `.env` (Pydantic Settings)
@@ -21,7 +21,8 @@ desenvolvida como projeto de portfólio.
 - [x] Aeronaves: prefixo/série únicos, motor 1:1, proprietário (cliente), filtro por proprietário
 - [x] Ordens de Serviço: numeração automática (SEQUENCE), máquina de estados de status, mecânico/inspetor validados por papel
 - [x] Inspeções: 50h/100h/anual/especial/progressiva, vinculadas a uma OS, responsável validado como Inspetor
-- [x] Testes unitários: segurança (hash/JWT), CPF/CNPJ, schema de Motor, máquina de estados da OS, datas de Inspeção
+- [x] Peças + Estoque: saldo controlado só por movimentações (livro-razão), bloqueio de saldo negativo
+- [x] Testes unitários: segurança (hash/JWT), CPF/CNPJ, schema de Motor, máquina de estados da OS, datas de Inspeção, quantidade de Movimentação
 - [ ] Clientes (Etapa 2)
 - [ ] Aeronaves + Motores (Etapa 3)
 - [ ] Ordens de Serviço (Etapa 4)
@@ -119,6 +120,18 @@ docker compose exec api pytest -v
 | GET    | `/inspecoes/{id}`       | Consulta uma inspeção                                            | admin, inspetor, mecanico    |
 | PUT    | `/inspecoes/{id}`       | Atualiza uma inspeção                                            | admin, inspetor, mecanico    |
 | DELETE | `/inspecoes/{id}`       | Remove uma inspeção                                              | admin                        |
+
+## Endpoints de peças e estoque (Etapa 6)
+
+| Método | Rota                          | Descrição                                                | Permissão                  |
+|--------|-------------------------------|-------------------------------------------------------------|------------------------------|
+| POST   | `/pecas`                      | Cadastra peça (`quantidade_atual` inicia em 0)               | admin, inspetor, mecanico    |
+| GET    | `/pecas`                      | Lista peças (paginado)                                        | admin, inspetor, mecanico    |
+| GET    | `/pecas/{id}`                 | Consulta uma peça                                              | admin, inspetor, mecanico    |
+| PUT    | `/pecas/{id}`                 | Atualiza dados cadastrais (não altera quantidade)              | admin, inspetor, mecanico    |
+| DELETE | `/pecas/{id}`                 | Remove peça (bloqueado se houver movimentações)                | admin                        |
+| POST   | `/movimentacoes-estoque`      | Registra entrada/saída (ajusta saldo atomicamente)             | admin, inspetor, mecanico    |
+| GET    | `/movimentacoes-estoque`      | Histórico (filtros: `peca_id`, `tipo`, `ordem_servico_id`)      | admin, inspetor, mecanico    |
 
 Máquina de estados do `status`:
 

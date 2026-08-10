@@ -16,7 +16,17 @@ from app.database.session import Base
 
 # Importar aqui todos os módulos de models para que fiquem registrados
 # no Base.metadata antes do autogenerate rodar.
-from app.models import aeronave, cliente, inspecao, motor, ordem_servico, refresh_token, user  # noqa: F401
+from app.models import (  # noqa: F401
+    aeronave,
+    cliente,
+    inspecao,
+    motor,
+    movimentacao_estoque,
+    ordem_servico,
+    peca,
+    refresh_token,
+    user,
+)
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)

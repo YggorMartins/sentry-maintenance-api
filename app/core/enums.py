@@ -35,3 +35,8 @@ class TipoInspecao(str, enum.Enum):
     ANUAL = "anual"
     ESPECIAL = "especial"
     PROGRESSIVA = "progressiva"
+
+
+class TipoMovimentacao(str, enum.Enum):
+    ENTRADA = "entrada"
+    SAIDA = "saida"
