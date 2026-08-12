@@ -226,7 +226,7 @@ docker compose down -v
 | PATCH  | `/ordens-servico/{id}/status`  | Transição de status (máquina de estados)                  | admin, inspetor              |
 | DELETE | `/ordens-servico/{id}`         | Remove (só permitido em status `aberta`)                   | admin                        |
 
-M�quina de estados:
+M�quina de estados:
 
 ```
 aberta ──────► em_andamento ──────► concluida
