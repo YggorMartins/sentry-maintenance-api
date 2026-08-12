@@ -18,6 +18,10 @@ class Settings(BaseSettings):
 
     # --- Banco de dados ---
     DATABASE_URL: str
+    # Opcional: se não definido, os testes derivam automaticamente um
+    # banco "<DATABASE_URL>_test" a partir do banco de desenvolvimento
+    # (ver app/tests/conftest.py).
+    TEST_DATABASE_URL: str | None = None
 
     # --- Segurança / JWT ---
     SECRET_KEY: str

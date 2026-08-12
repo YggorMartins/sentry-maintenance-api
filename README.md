@@ -1,157 +1,232 @@
 # Sentry Maintenance API
 
-> ⚠️ Projeto em desenvolvimento incremental. Este README será completado
-> na etapa final, com descrição completa, endpoints, exemplos de uso e
-> instruções de deploy.
+API REST para gestão de manutenção aeronáutica de uma oficina
+certificada — controle de clientes, aeronaves, motores, ordens de
+serviço, inspeções, estoque de peças e anexos digitais. Projeto de
+portfólio construído em etapas incrementais, com arquitetura em
+camadas, testes automatizados e Docker.
 
-API de gestão de manutenção aeronáutica para uma oficina certificada,
-desenvolvida como projeto de portfólio.
+## Descrição
 
-## Status atual: Etapa 7 — Upload de Arquivos
+O sistema simula o dia a dia de uma oficina de manutenção aeronáutica
+certificada: cadastro de clientes (pessoa física/jurídica), aeronaves
+e seus motores, abertura e acompanhamento de Ordens de Serviço com
+máquina de estados, registro de inspeções regulatórias (50h, 100h,
+anual, especial, progressiva), controle de estoque de peças por
+movimentação (entrada/saída, nunca edição direta de saldo), e upload
+de documentos (certificados, laudos, OS digitalizadas). Autenticação
+via JWT com controle de acesso por papel (admin, inspetor, mecânico,
+cliente).
 
-- [x] Estrutura de pastas (Clean Architecture)
-- [x] Configuração via `.env` (Pydantic Settings)
-- [x] Docker + Docker Compose (API + PostgreSQL)
-- [x] SQLAlchemy 2.0 + Alembic configurados
-- [x] FastAPI básico com health check
-- [x] Autenticação: registro, login, refresh (com rotação), logout (com revogação real via jti), `/auth/me`
-- [x] Roles: admin, inspetor, mecanico, cliente + `RoleChecker` reutilizável
-- [x] Clientes: PF/PJ unificados, validação de CPF/CNPJ (dígito verificador), endereço, paginação
-- [x] Motores: TSN/TSO/TBO, número de série único
-- [x] Aeronaves: prefixo/série únicos, motor 1:1, proprietário (cliente), filtro por proprietário
-- [x] Ordens de Serviço: numeração automática (SEQUENCE), máquina de estados de status, mecânico/inspetor validados por papel
-- [x] Inspeções: 50h/100h/anual/especial/progressiva, vinculadas a uma OS, responsável validado como Inspetor
-- [x] Peças + Estoque: saldo controlado só por movimentações (livro-razão), bloqueio de saldo negativo
-- [x] Anexos: upload polimórfico (aeronave/OS/cliente/inspeção), abstração de storage pronta para S3, validação de tipo/tamanho
-- [x] Testes unitários: segurança (hash/JWT), CPF/CNPJ, schema de Motor, máquina de estados da OS, datas de Inspeção, quantidade de Movimentação, LocalStorageBackend
-- [ ] Clientes (Etapa 2)
-- [ ] Aeronaves + Motores (Etapa 3)
-- [ ] Ordens de Serviço (Etapa 4)
-- [ ] Inspeções (Etapa 5)
-- [ ] Peças + Estoque (Etapa 6)
-- [ ] Upload de arquivos (Etapa 7)
-- [ ] Testes, segurança e documentação final (Etapa 8)
+## Tecnologias
 
-## Como rodar (ambiente de desenvolvimento)
+- **Python 3.12+** / **FastAPI** — framework web assíncrono, com
+  documentação OpenAPI/Swagger automática
+- **PostgreSQL** + **SQLAlchemy 2.0** (ORM, estilo `Mapped`/`mapped_column`)
+- **Alembic** — migrations versionadas
+- **Pydantic V2** — validação de entrada/saída
+- **JWT** (`python-jose`) + **bcrypt** (`passlib`) — autenticação e hash de senha
+- **Docker** + **Docker Compose** — API e banco containerizados
+- **Pytest** — testes unitários (funções puras) e de integração (HTTP + banco real)
+
+## Arquitetura
+
+Camadas separadas por responsabilidade técnica (não por feature),
+seguindo os princípios de Clean Architecture adaptados a um projeto
+FastAPI:
+
+```
+Requisição HTTP
+      │
+      ▼
+  routers/        → só HTTP: recebe request, valida com schema, chama service, traduz exceção → status HTTP
+      │
+      ▼
+  services/        → regra de negócio pura (não sabe o que é HTTP nem SQL)
+      │
+      ▼
+  repositories/     → única camada que fala com o banco (queries SQLAlchemy)
+      │
+      ▼
+  models/           → entidades ORM (SQLAlchemy)
+```
+
+Complementando:
+- **`schemas/`** — contratos Pydantic de entrada/saída da API (nunca os mesmos objetos que os `models/`)
+- **`core/`** — transversais: segurança (hash/JWT), exceções de domínio, enums, storage, logging
+- **`dependencies/`** — dependências injetáveis do FastAPI (usuário autenticado, checagem de papel)
+- **`config/`** — leitura centralizada de variáveis de ambiente
+
+Essa separação permite, por exemplo, testar regra de negócio sem
+banco real (mockando o repository), ou trocar PostgreSQL por outro
+banco sem tocar em `services/`.
+
+### Decisões de design que valem a pena destacar
+
+- **Dados derivados nunca são duplicados**: o cliente de uma Ordem de
+  Serviço não é armazenado na própria OS — é obtido via
+  `ordem.aeronave.cliente`. Evita duas fontes de verdade.
+- **Estoque é um livro-razão**: `Peca.quantidade_atual` só muda
+  através de registros de `MovimentacaoEstoque` (entrada/saída),
+  nunca editado diretamente — dá rastreabilidade completa de graça.
+- **Máquina de estados para Ordem de Serviço**: transições de
+  `status` são validadas contra uma tabela de transições permitidas,
+  não um campo livre.
+- **Numeração de OS atômica**: usa uma `SEQUENCE` nativa do
+  PostgreSQL, evitando race conditions sob requisições concorrentes.
+- **Abstração de armazenamento (Strategy Pattern)**: upload de
+  arquivos passa por uma interface `StorageBackend`; hoje só existe
+  `LocalStorageBackend` (disco), mas trocar para AWS S3 no futuro
+  exige só uma nova implementação da interface, sem tocar no resto do
+  sistema.
+- **Revogação real de sessão**: logout marca o `jti` do refresh token
+  como revogado no banco — não é só o cliente "esquecer" o token.
+
+## Estrutura de pastas
+
+```
+sentry-maintenance-api/
+├── app/
+│   ├── main.py                 # ponto de entrada, middlewares, exception handler
+│   ├── api/
+│   ├── auth/
+│   ├── config/
+│   │   └── settings.py         # configuração centralizada (Pydantic Settings)
+│   ├── core/
+│   │   ├── security.py         # hash de senha, JWT
+│   │   ├── exceptions.py       # exceções de domínio
+│   │   ├── enums.py            # enums compartilhados (roles, status, tipos)
+│   │   ├── storage.py          # abstração de armazenamento de arquivos
+│   │   └── logging.py          # configuração de logging
+│   ├── database/
+│   │   └── session.py          # engine, sessão, Base declarativa
+│   ├── models/                 # entidades SQLAlchemy
+│   ├── schemas/                # contratos Pydantic
+│   ├── repositories/           # acesso a dados (única camada que fala com o banco)
+│   ├── services/                # regra de negócio
+│   ├── dependencies/            # dependências injetáveis (auth, RoleChecker)
+│   ├── routers/                 # endpoints REST
+│   ├── utils/                   # funções puras reutilizáveis (validador de CPF/CNPJ)
+│   └── tests/
+│       ├── conftest.py         # fixtures de teste (sessão isolada + client HTTP)
+│       ├── helpers.py          # funções auxiliares dos testes de integração
+│       ├── test_*_schema.py    # testes unitários (funções puras, sem banco)
+│       └── test_*_flow.py      # testes de integração (HTTP real + banco real)
+├── alembic/
+│   └── versions/                # migrations versionadas
+├── docker-compose.yml
+├── Dockerfile
+├── requirements.txt
+└── .env.example
+```
+
+## Como instalar
+
+Pré-requisitos: Docker e Docker Compose instalados.
 
 ```bash
+git clone <url-do-repositorio>
+cd sentry-maintenance-api
 cp .env.example .env
-# ajuste as variáveis se necessário
-
-docker compose up --build
 ```
 
-A API sobe em `http://localhost:8000`. Verifique com:
+Ajuste o `.env` se necessário (valores padrão já funcionam com o
+`docker-compose.yml` fornecido).
+
+## Como executar
 
 ```bash
-curl http://localhost:8000/health
-```
-
-Documentação interativa (Swagger): `http://localhost:8000/docs`
-
-Depois de subir os containers, aplique as migrations (dentro do container `api`):
-
-```bash
+docker compose up --build -d
 docker compose exec api alembic upgrade head
 ```
 
-Rode os testes:
+A API sobe em `http://localhost:8000`.
+
+- Documentação interativa (Swagger): `http://localhost:8000/docs`
+- Health check: `http://localhost:8000/health`
+
+Para parar:
 
 ```bash
-docker compose exec api pytest -v
+docker compose down
 ```
 
-## Endpoints de autenticação (Etapa 1)
+Para parar e apagar os dados do banco:
+
+```bash
+docker compose down -v
+```
+
+## Variáveis de ambiente
+
+| Variável                      | Descrição                                             | Padrão                     |
+|--------------------------------|--------------------------------------------------------|------------------------------|
+| `APP_NAME`                    | Nome da aplicação                                       | `Sentry Maintenance API`     |
+| `APP_ENV`                     | Ambiente (`development`/`production`)                   | `development`                |
+| `DEBUG`                       | Ativa echo de SQL e nível de log DEBUG                   | `True`                        |
+| `DATABASE_URL`                | String de conexão PostgreSQL                             | —                              |
+| `SECRET_KEY`                  | Chave de assinatura dos JWT (troque em produção!)         | —                              |
+| `ALGORITHM`                   | Algoritmo do JWT                                          | `HS256`                        |
+| `ACCESS_TOKEN_EXPIRE_MINUTES`  | Validade do access token                                  | `30`                            |
+| `REFRESH_TOKEN_EXPIRE_DAYS`   | Validade do refresh token                                 | `7`                              |
+| `CORS_ORIGINS`                | Origens permitidas (CORS)                                  | `*`                              |
+| `UPLOAD_DIR`                  | Diretório de armazenamento local de anexos                 | `app/uploads`                    |
+| `MAX_UPLOAD_SIZE_MB`          | Tamanho máximo de upload                                    | `10`                              |
+
+## Endpoints
+
+### Autenticação
 
 | Método | Rota            | Descrição                                    | Autenticado? |
-|--------|-----------------|-----------------------------------------------|--------------|
-| POST   | `/auth/register`| Cadastra novo usuário                          | Não          |
-| POST   | `/auth/login`   | Autentica e retorna access + refresh token     | Não          |
-| POST   | `/auth/refresh` | Gera novo par de tokens (rotaciona o refresh)  | Não          |
-| POST   | `/auth/logout`  | Revoga o refresh token informado               | Não          |
-| GET    | `/auth/me`      | Retorna os dados do usuário autenticado        | Sim          |
+|--------|-----------------|-------------------------------------------------|--------------|
+| POST   | `/auth/register`| Cadastra novo usuário                            | Não          |
+| POST   | `/auth/login`   | Autentica e retorna access + refresh token       | Não          |
+| POST   | `/auth/refresh` | Gera novo par de tokens (rotaciona o refresh)    | Não          |
+| POST   | `/auth/logout`  | Revoga o refresh token informado                 | Não          |
+| GET    | `/auth/me`      | Retorna os dados do usuário autenticado          | Sim          |
 
-## Endpoints de clientes (Etapa 2)
+### Clientes
 
-| Método | Rota               | Descrição                          | Permissão                        |
-|--------|--------------------|-------------------------------------|-----------------------------------|
-| POST   | `/clientes`        | Cadastra cliente (PF ou PJ)         | admin, inspetor                   |
-| GET    | `/clientes`        | Lista clientes (paginado)           | admin, inspetor, mecanico         |
-| GET    | `/clientes/{id}`   | Consulta um cliente                 | admin, inspetor, mecanico         |
-| PUT    | `/clientes/{id}`   | Atualiza um cliente                 | admin, inspetor                   |
-| DELETE | `/clientes/{id}`   | Remove um cliente                   | admin, inspetor                   |
+| Método | Rota               | Descrição                | Permissão                  |
+|--------|--------------------|----------------------------|------------------------------|
+| POST   | `/clientes`        | Cadastra cliente (PF/PJ)    | admin, inspetor              |
+| GET    | `/clientes`        | Lista (paginado)             | admin, inspetor, mecanico    |
+| GET    | `/clientes/{id}`   | Consulta                      | admin, inspetor, mecanico    |
+| PUT    | `/clientes/{id}`   | Atualiza                      | admin, inspetor              |
+| DELETE | `/clientes/{id}`   | Remove                        | admin, inspetor              |
 
-## Endpoints de motores (Etapa 3)
+### Motores
 
-| Método | Rota              | Descrição                     | Permissão                          |
-|--------|-------------------|---------------------------------|--------------------------------------|
-| POST   | `/motores`        | Cadastra motor                  | admin, inspetor, mecanico            |
-| GET    | `/motores`        | Lista motores (paginado)        | admin, inspetor, mecanico            |
-| GET    | `/motores/{id}`   | Consulta um motor                | admin, inspetor, mecanico            |
-| PUT    | `/motores/{id}`   | Atualiza um motor (TSN/TSO etc.) | admin, inspetor, mecanico            |
-| DELETE | `/motores/{id}`   | Remove um motor                  | admin, inspetor, mecanico            |
+| Método | Rota              | Descrição            | Permissão                  |
+|--------|-------------------|------------------------|------------------------------|
+| POST   | `/motores`        | Cadastra                | admin, inspetor, mecanico    |
+| GET    | `/motores`        | Lista (paginado)         | admin, inspetor, mecanico    |
+| GET    | `/motores/{id}`   | Consulta                  | admin, inspetor, mecanico    |
+| PUT    | `/motores/{id}`   | Atualiza (TSN/TSO etc.)   | admin, inspetor, mecanico    |
+| DELETE | `/motores/{id}`   | Remove                     | admin, inspetor, mecanico    |
 
-## Endpoints de aeronaves (Etapa 3)
+### Aeronaves
 
 | Método | Rota                | Descrição                                     | Permissão                  |
-|--------|---------------------|-------------------------------------------------|------------------------------|
-| POST   | `/aeronaves`        | Cadastra aeronave (valida motor/proprietário)   | admin, inspetor              |
-| GET    | `/aeronaves`        | Lista aeronaves (paginado, filtro por `cliente_id`) | admin, inspetor, mecanico |
-| GET    | `/aeronaves/{id}`   | Consulta uma aeronave                            | admin, inspetor, mecanico    |
-| PUT    | `/aeronaves/{id}`   | Atualiza uma aeronave                            | admin, inspetor              |
-| DELETE | `/aeronaves/{id}`   | Remove uma aeronave                              | admin, inspetor              |
+|--------|---------------------|---------------------------------------------------|------------------------------|
+| POST   | `/aeronaves`        | Cadastra (valida motor/proprietário)                | admin, inspetor              |
+| GET    | `/aeronaves`        | Lista (paginado, filtro `cliente_id`)                | admin, inspetor, mecanico    |
+| GET    | `/aeronaves/{id}`   | Consulta                                              | admin, inspetor, mecanico    |
+| PUT    | `/aeronaves/{id}`   | Atualiza                                              | admin, inspetor              |
+| DELETE | `/aeronaves/{id}`   | Remove                                                | admin, inspetor              |
 
-## Endpoints de ordens de serviço (Etapa 4)
+### Ordens de Serviço
 
 | Método | Rota                          | Descrição                                          | Permissão                  |
-|--------|-------------------------------|------------------------------------------------------|------------------------------|
-| POST   | `/ordens-servico`             | Abre OS (número gerado automaticamente)               | admin, inspetor              |
-| GET    | `/ordens-servico`              | Lista OS (filtros: `aeronave_id`, `status`, `mecanico_id`) | admin, inspetor, mecanico |
-| GET    | `/ordens-servico/{id}`         | Consulta uma OS                                       | admin, inspetor, mecanico    |
-| PUT    | `/ordens-servico/{id}`         | Edita campos (bloqueado se status terminal)            | admin, inspetor              |
-| PATCH  | `/ordens-servico/{id}/status`  | Transição de status (valida máquina de estados)        | admin, inspetor              |
-| DELETE | `/ordens-servico/{id}`         | Remove OS (só permitido em status `aberta`)            | admin                        |
+|--------|-------------------------------|--------------------------------------------------------|------------------------------|
+| POST   | `/ordens-servico`             | Abre OS (número gerado automaticamente)                 | admin, inspetor              |
+| GET    | `/ordens-servico`              | Lista (filtros: `aeronave_id`, `status`, `mecanico_id`)  | admin, inspetor, mecanico    |
+| GET    | `/ordens-servico/{id}`         | Consulta                                                  | admin, inspetor, mecanico    |
+| PUT    | `/ordens-servico/{id}`         | Edita campos (bloqueado se status terminal)               | admin, inspetor              |
+| PATCH  | `/ordens-servico/{id}/status`  | Transição de status (máquina de estados)                  | admin, inspetor              |
+| DELETE | `/ordens-servico/{id}`         | Remove (só permitido em status `aberta`)                   | admin                        |
 
-## Endpoints de inspeções (Etapa 5)
-
-| Método | Rota                    | Descrição                                                    | Permissão                  |
-|--------|-------------------------|-----------------------------------------------------------------|------------------------------|
-| POST   | `/inspecoes`            | Registra inspeção (valida OS e responsável = inspetor)          | admin, inspetor, mecanico    |
-| GET    | `/inspecoes`            | Lista (filtros: `aeronave_id`, `ordem_servico_id`, `tipo`)       | admin, inspetor, mecanico    |
-| GET    | `/inspecoes/{id}`       | Consulta uma inspeção                                            | admin, inspetor, mecanico    |
-| PUT    | `/inspecoes/{id}`       | Atualiza uma inspeção                                            | admin, inspetor, mecanico    |
-| DELETE | `/inspecoes/{id}`       | Remove uma inspeção                                              | admin                        |
-
-## Endpoints de peças e estoque (Etapa 6)
-
-| Método | Rota                          | Descrição                                                | Permissão                  |
-|--------|-------------------------------|-------------------------------------------------------------|------------------------------|
-| POST   | `/pecas`                      | Cadastra peça (`quantidade_atual` inicia em 0)               | admin, inspetor, mecanico    |
-| GET    | `/pecas`                      | Lista peças (paginado)                                        | admin, inspetor, mecanico    |
-| GET    | `/pecas/{id}`                 | Consulta uma peça                                              | admin, inspetor, mecanico    |
-| PUT    | `/pecas/{id}`                 | Atualiza dados cadastrais (não altera quantidade)              | admin, inspetor, mecanico    |
-| DELETE | `/pecas/{id}`                 | Remove peça (bloqueado se houver movimentações)                | admin                        |
-| POST   | `/movimentacoes-estoque`      | Registra entrada/saída (ajusta saldo atomicamente)             | admin, inspetor, mecanico    |
-| GET    | `/movimentacoes-estoque`      | Histórico (filtros: `peca_id`, `tipo`, `ordem_servico_id`)      | admin, inspetor, mecanico    |
-
-## Endpoints de anexos (Etapa 7)
-
-| Método | Rota                      | Descrição                                                     | Permissão                  |
-|--------|---------------------------|-------------------------------------------------------------------|------------------------------|
-| POST   | `/anexos`                 | Upload (multipart/form-data: `entidade_tipo`, `entidade_id`, `file`, `descricao`) | admin, inspetor, mecanico |
-| GET    | `/anexos`                 | Lista (filtros: `entidade_tipo`, `entidade_id`)                    | admin, inspetor, mecanico    |
-| GET    | `/anexos/{id}`            | Metadados de um anexo                                               | admin, inspetor, mecanico    |
-| GET    | `/anexos/{id}/download`   | Baixa o arquivo                                                     | admin, inspetor, mecanico    |
-| DELETE | `/anexos/{id}`            | Remove o anexo (banco + arquivo em disco)                           | admin, inspetor              |
-
-Tipos de arquivo aceitos: PDF, JPG, PNG, DOC, DOCX. Tamanho máximo
-configurável via `MAX_UPLOAD_SIZE_MB` no `.env` (padrão: 10MB).
-
-`entidade_tipo` aceita: `aeronave`, `ordem_servico`, `cliente`,
-`inspecao` — o `entidade_id` deve ser o UUID de um registro existente
-daquele tipo (validado no upload).
-
-Máquina de estados do `status`:
+M�quina de estados:
 
 ```
 aberta ──────► em_andamento ──────► concluida
@@ -162,7 +237,141 @@ aberta ──────► em_andamento ──────► concluida
   └──────► cancelada ◄┘
 ```
 
-## Stack
+### Inspeções
 
-Python 3.12+, FastAPI, PostgreSQL, SQLAlchemy 2.0, Alembic, Pydantic V2,
-Docker, JWT, Pytest.
+| Método | Rota                    | Descrição                                                    | Permissão                  |
+|--------|-------------------------|-------------------------------------------------------------------|------------------------------|
+| POST   | `/inspecoes`            | Registra (valida OS e responsável = inspetor)                      | admin, inspetor, mecanico    |
+| GET    | `/inspecoes`            | Lista (filtros: `aeronave_id`, `ordem_servico_id`, `tipo`)           | admin, inspetor, mecanico    |
+| GET    | `/inspecoes/{id}`       | Consulta                                                             | admin, inspetor, mecanico    |
+| PUT    | `/inspecoes/{id}`       | Atualiza                                                              | admin, inspetor, mecanico    |
+| DELETE | `/inspecoes/{id}`       | Remove                                                                | admin                        |
+
+### Peças e Estoque
+
+| Método | Rota                          | Descrição                                                | Permissão                  |
+|--------|-------------------------------|-------------------------------------------------------------|------------------------------|
+| POST   | `/pecas`                      | Cadastra (`quantidade_atual` inicia em 0)                     | admin, inspetor, mecanico    |
+| GET    | `/pecas`                      | Lista (paginado)                                               | admin, inspetor, mecanico    |
+| GET    | `/pecas/{id}`                 | Consulta                                                        | admin, inspetor, mecanico    |
+| PUT    | `/pecas/{id}`                 | Atualiza cadastro (não altera quantidade)                       | admin, inspetor, mecanico    |
+| DELETE | `/pecas/{id}`                 | Remove (bloqueado se houver movimentações)                      | admin                        |
+| POST   | `/movimentacoes-estoque`      | Registra entrada/saída (ajusta saldo atomicamente)               | admin, inspetor, mecanico    |
+| GET    | `/movimentacoes-estoque`      | Histórico (filtros: `peca_id`, `tipo`, `ordem_servico_id`)         | admin, inspetor, mecanico    |
+
+### Anexos
+
+| Método | Rota                      | Descrição                                                     | Permissão                  |
+|--------|---------------------------|---------------------------------------------------------------------|------------------------------|
+| POST   | `/anexos`                 | Upload (multipart: `entidade_tipo`, `entidade_id`, `file`, `descricao`)| admin, inspetor, mecanico |
+| GET    | `/anexos`                 | Lista (filtros: `entidade_tipo`, `entidade_id`)                       | admin, inspetor, mecanico    |
+| GET    | `/anexos/{id}`            | Metadados                                                              | admin, inspetor, mecanico    |
+| GET    | `/anexos/{id}/download`   | Baixa o arquivo                                                        | admin, inspetor, mecanico    |
+| DELETE | `/anexos/{id}`            | Remove (banco + arquivo em disco)                                       | admin, inspetor              |
+
+Tipos aceitos: PDF, JPG, PNG, DOC, DOCX. `entidade_tipo` aceita:
+`aeronave`, `ordem_servico`, `cliente`, `inspecao`.
+
+## Exemplos de requisições
+
+**Registro + login:**
+
+```bash
+curl -X POST http://localhost:8000/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"full_name": "Admin", "email": "admin@oficina.com", "password": "SenhaForte123", "role": "admin"}'
+
+curl -X POST http://localhost:8000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "admin@oficina.com", "password": "SenhaForte123"}'
+# → { "access_token": "...", "refresh_token": "...", "token_type": "bearer" }
+```
+
+**Criar cliente (autenticado):**
+
+```bash
+curl -X POST http://localhost:8000/clientes \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <access_token>" \
+  -d '{"tipo_pessoa": "fisica", "nome": "Fulano de Tal", "cpf": "111.444.777-35"}'
+```
+
+**Abrir uma Ordem de Serviço e mudar o status:**
+
+```bash
+curl -X POST http://localhost:8000/ordens-servico \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <access_token>" \
+  -d '{"aeronave_id": "<uuid-da-aeronave>", "descricao": "Revisão de 100 horas"}'
+
+curl -X PATCH http://localhost:8000/ordens-servico/<id>/status \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <access_token>" \
+  -d '{"status": "em_andamento"}'
+```
+
+**Upload de anexo (multipart):**
+
+```bash
+curl -X POST http://localhost:8000/anexos \
+  -H "Authorization: Bearer <access_token>" \
+  -F "entidade_tipo=aeronave" \
+  -F "entidade_id=<uuid-da-aeronave>" \
+  -F "descricao=Certificado de aeronavegabilidade" \
+  -F "file=@certificado.pdf"
+```
+
+## Como executar os testes
+
+```bash
+docker compose exec api pytest -v
+```
+
+O projeto tem dois tipos de teste:
+
+- **Unitários** (`test_*_schema.py`, `test_security.py`,
+  `test_document_validators.py`, `test_storage.py`,
+  `test_ordem_servico_status.py`): testam funções e validações puras
+  — não tocam o banco, rodam em milissegundos.
+- **De integração** (`test_*_flow.py`): sobem a aplicação FastAPI
+  completa e testam o fluxo real via HTTP (registro → login →
+  criação de recursos → regras de negócio). Rodam contra um **banco
+  de dados de testes dedicado** (`sentry_maintenance_test`, criado
+  automaticamente na primeira execução — não é o banco de
+  desenvolvimento), com cada teste isolado numa transação revertida
+  ao final. Cobrem Autenticação, Clientes, Aeronaves e Ordens de
+  Serviço.
+
+Para rodar só uma categoria:
+
+```bash
+docker compose exec api pytest app/tests/test_auth_flow.py -v
+docker compose exec api pytest -k "schema" -v
+```
+
+## Deploy
+
+Este projeto está pronto para rodar em qualquer ambiente com Docker.
+Para um deploy real (fora do ambiente de desenvolvimento local), os
+pontos de atenção são:
+
+1. **Variáveis de ambiente**: gere uma `SECRET_KEY` forte
+   (`openssl rand -hex 32`), defina `DEBUG=False` e `APP_ENV=production`.
+2. **Banco de dados**: em produção, prefira um PostgreSQL gerenciado
+   (RDS, Cloud SQL, etc.) em vez do container do `docker-compose.yml`
+   (que é pensado para desenvolvimento local) — aponte `DATABASE_URL`
+   para ele.
+3. **Migrations**: rode `alembic upgrade head` como parte do processo
+   de deploy (antes de trocar o tráfego pra nova versão), nunca
+   manualmente em produção.
+4. **Uploads**: o `LocalStorageBackend` grava em disco local, o que
+   não sobrevive a redeploys/múltiplas instâncias em ambientes cloud
+   — nesse cenário, implemente `S3StorageBackend` (mesma interface
+   `StorageBackend` em `app/core/storage.py`) e troque a instância
+   retornada por `get_storage_backend()`.
+5. **HTTPS/reverse proxy**: o Uvicorn dentro do container não deve
+   ficar exposto diretamente à internet — coloque atrás de um reverse
+   proxy (nginx, Caddy, ou o load balancer do seu provedor cloud) que
+   termine TLS.
+6. **CORS**: restrinja `CORS_ORIGINS` ao domínio real do frontend em
+   produção (nunca deixe `*` fora de desenvolvimento).
