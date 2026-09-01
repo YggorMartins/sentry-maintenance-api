@@ -9,14 +9,26 @@ demais.
 """
 from fastapi.testclient import TestClient
 
+from app.core.roles import UserRole
+from app.repositories.user_repository import UserRepository
+
 SENHA_PADRAO = "SenhaForte123"
 
 
 def registrar_e_logar(client: TestClient, role: str, email: str) -> str:
-    client.post(
+    registro = client.post(
         "/auth/register",
-        json={"full_name": f"Usuario {role}", "email": email, "password": SENHA_PADRAO, "role": role},
+        json={"full_name": f"Usuario {role}", "email": email, "password": SENHA_PADRAO},
     )
+    assert registro.status_code == 201, registro.text
+
+    if role != UserRole.CLIENTE.value:
+        db = client._sentry_test_db
+        user = UserRepository(db).get_by_email(email)
+        assert user is not None
+        user.role = UserRole(role)
+        db.commit()
+
     resp = client.post("/auth/login", json={"email": email, "password": SENHA_PADRAO})
     assert resp.status_code == 200, resp.text
     return resp.json()["access_token"]

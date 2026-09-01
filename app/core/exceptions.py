@@ -106,3 +106,15 @@ class EntidadeReferenciadaNotFoundError(Exception):
 
 class ArquivoInvalidoError(Exception):
     """Tipo de arquivo não suportado ou tamanho acima do limite permitido."""
+
+
+class RateLimitExceededError(Exception):
+    """O identificador ultrapassou a cota permitida na janela atual."""
+
+    def __init__(self, retry_after: int):
+        self.retry_after = retry_after
+        super().__init__("Limite de requisições excedido.")
+
+
+class RateLimitBackendUnavailableError(Exception):
+    """O backend distribuído de rate limiting não está disponível."""

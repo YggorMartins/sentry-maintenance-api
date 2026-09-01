@@ -6,20 +6,19 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /code
 
-# Dependências de sistema necessárias para compilar psycopg2
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
-
 # Copiamos apenas o requirements.txt primeiro para aproveitar o cache de
 # camadas do Docker: se o código mudar mas as dependências não, o build
 # reaproveita o cache do pip install.
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+RUN addgroup --system app && adduser --system --ingroup app app
+
+COPY --chown=app:app . .
+RUN mkdir -p /code/app/uploads && chown -R app:app /code/app/uploads
+
+USER app
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

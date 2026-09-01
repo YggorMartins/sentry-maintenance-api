@@ -6,9 +6,12 @@ explicação no model), este service é responsável por validar "na mão"
 que a entidade referenciada realmente existe, despachando para o
 repository certo conforme o tipo.
 """
+import io
 import re
 import unicodedata
 import uuid
+import zipfile
+from pathlib import Path
 
 from sqlalchemy.orm import Session
 
@@ -35,6 +38,14 @@ CONTENT_TYPES_PERMITIDOS = {
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 }
 
+EXTENSOES_POR_CONTENT_TYPE = {
+    "application/pdf": {".pdf"},
+    "image/jpeg": {".jpg", ".jpeg"},
+    "image/png": {".png"},
+    "application/msword": {".doc"},
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": {".docx"},
+}
+
 
 class AnexoService:
     def __init__(self, db: Session, storage: StorageBackend):
@@ -58,7 +69,31 @@ class AnexoService:
     @staticmethod
     def _sanitizar_nome_arquivo(nome: str) -> str:
         nome = unicodedata.normalize("NFKD", nome).encode("ascii", "ignore").decode("ascii")
-        return re.sub(r"[^A-Za-z0-9._-]", "_", nome)
+        nome = re.sub(r"[^A-Za-z0-9._-]", "_", Path(nome).name)
+        return nome if nome not in {"", ".", ".."} else "arquivo"
+
+    @staticmethod
+    def detectar_content_type(conteudo: bytes) -> str | None:
+        """Detecta formatos permitidos pela assinatura, sem confiar no header HTTP."""
+        if conteudo.startswith(b"%PDF-"):
+            return "application/pdf"
+        if conteudo.startswith(b"\x89PNG\r\n\x1a\n"):
+            return "image/png"
+        if conteudo.startswith(b"\xff\xd8\xff"):
+            return "image/jpeg"
+        if conteudo.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"):
+            return "application/msword"
+        if conteudo.startswith(b"PK\x03\x04"):
+            try:
+                with zipfile.ZipFile(io.BytesIO(conteudo)) as archive:
+                    names = set(archive.namelist())
+            except (OSError, zipfile.BadZipFile):
+                return None
+            if "[Content_Types].xml" in names and any(
+                name.startswith("word/") for name in names
+            ):
+                return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        return None
 
     def upload(
         self,
@@ -72,28 +107,37 @@ class AnexoService:
     ) -> Anexo:
         self._validar_entidade_existe(entidade_tipo, entidade_id)
 
-        if content_type not in CONTENT_TYPES_PERMITIDOS:
+        tamanho_maximo = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+        if not conteudo or len(conteudo) > tamanho_maximo:
             raise ArquivoInvalidoError()
 
-        tamanho_maximo = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
-        if len(conteudo) > tamanho_maximo:
+        content_type_detectado = self.detectar_content_type(conteudo)
+        if content_type_detectado not in CONTENT_TYPES_PERMITIDOS:
+            raise ArquivoInvalidoError()
+        if content_type not in {content_type_detectado, "application/octet-stream"}:
             raise ArquivoInvalidoError()
 
         subdir = f"{entidade_tipo.value}/{entidade_id}"
         nome_seguro = self._sanitizar_nome_arquivo(nome_original)
+        if Path(nome_seguro).suffix.lower() not in EXTENSOES_POR_CONTENT_TYPE[content_type_detectado]:
+            raise ArquivoInvalidoError()
         caminho_relativo = self.storage.save(conteudo, subdir, nome_seguro)
 
         anexo = Anexo(
             entidade_tipo=entidade_tipo,
             entidade_id=entidade_id,
-            nome_original=nome_original,
+            nome_original=nome_seguro,
             caminho_arquivo=caminho_relativo,
-            content_type=content_type,
+            content_type=content_type_detectado,
             tamanho_bytes=len(conteudo),
             descricao=descricao,
             usuario_id=usuario_id,
         )
-        return self.repository.create(anexo)
+        try:
+            return self.repository.create(anexo)
+        except Exception:
+            self.storage.delete(caminho_relativo)
+            raise
 
     def get(self, anexo_id: uuid.UUID) -> Anexo:
         anexo = self.repository.get_by_id(anexo_id)

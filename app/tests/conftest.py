@@ -9,6 +9,13 @@ O isolamento é por teste: SQLite tem suas tabelas limpas ao final; no
 PostgreSQL cada sessão participa de uma transação externa revertida no
 teardown, mesmo que os repositories chamem ``commit()``.
 """
+import os
+
+os.environ.setdefault("APP_ENV", "test")
+os.environ.setdefault("RATE_LIMIT_ENABLED", "False")
+os.environ.setdefault("SECRET_KEY", "test-only-secret-key-with-at-least-32-bytes")
+os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
@@ -122,5 +129,8 @@ def client(db_session):
 
     app.dependency_overrides[get_db] = _override_get_db
     with TestClient(app) as test_client:
+        # Apoio exclusivo dos helpers: papéis privilegiados são semeados
+        # diretamente no banco, nunca pelo endpoint público de registro.
+        test_client._sentry_test_db = db_session
         yield test_client
     app.dependency_overrides.clear()

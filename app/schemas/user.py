@@ -14,10 +14,19 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from app.core.roles import UserRole
 
 
-class UserCreate(BaseModel):
+class UserRegistration(BaseModel):
+    """Contrato público: novos cadastros sempre começam como cliente."""
+
     full_name: str = Field(min_length=3, max_length=150)
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class UserCreate(UserRegistration):
+    """Contrato interno usado por bootstrap e administração."""
+
     role: UserRole = UserRole.CLIENTE
 
 

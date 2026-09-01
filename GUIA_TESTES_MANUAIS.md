@@ -10,6 +10,7 @@ passo a passo de cada teste manual sugerido nas Etapas 1 a 5.
 No terminal (PowerShell), dentro da pasta do projeto:
 
 ```bash
+Copy-Item .env.example .env
 docker compose up --build -d
 ```
 
@@ -26,10 +27,17 @@ Aplique as migrations (cria as tabelas no banco):
 docker compose exec api alembic upgrade head
 ```
 
-Rode os testes automatizados:
+Crie o primeiro administrador (a senha é solicitada sem aparecer no terminal):
 
 ```bash
-docker compose exec api pytest -v
+docker compose exec api python -m app.cli.create_admin --email admin@oficina.com --full-name "Administrador"
+```
+
+Para rodar os testes automatizados no ambiente virtual local:
+
+```bash
+python -m pip install -r requirements-dev.txt
+pytest -v
 ```
 
 Para parar tudo:
@@ -61,8 +69,8 @@ Ordens de Serviço, Inspeções), cada um com um botão **"Try it out"**.
 
 ### Como autenticar no Swagger
 
-1. Primeiro registre um usuário admin (endpoint `POST /auth/register`,
-   veja o passo a passo abaixo).
+1. Primeiro crie o administrador pelo comando de bootstrap mostrado
+   na seção anterior. O registro público cria somente clientes.
 2. Faça login em `POST /auth/login` e copie o valor de `access_token`
    da resposta.
 3. Clique no botão **"Authorize"** (cadeado, no topo direito da
@@ -81,17 +89,15 @@ só logar de novo (ou usar `/auth/refresh`).
 **Objetivo:** validar login, JWT, e que logout realmente revoga o
 refresh token (não é só cosmético no cliente).
 
-1. `POST /auth/register` — crie um usuário com `role: "admin"`.
-2. `POST /auth/login` — copie `access_token` e `refresh_token` da
+1. `POST /auth/login` — entre com o administrador criado pelo comando
+   de bootstrap e copie `access_token` e `refresh_token` da
    resposta.
-3. Clique em **Authorize** e cole o `access_token`.
-4. `GET /auth/me` — deve retornar os dados do usuário logado.
-5. `POST /auth/refresh` — envie o `refresh_token` no corpo. Deve
+2. Clique em **Authorize** e cole o `access_token`.
+3. `GET /auth/me` — deve retornar os dados do usuário logado.
+4. `POST /auth/refresh` — envie o `refresh_token` no corpo. Deve
    devolver um par novo de tokens.
-6. `POST /auth/logout` — envie o **mesmo** `refresh_token` usado no
-   passo 5 (ele já foi rotacionado, então este teste é sobre o token
-   novo retornado no passo 5).
-7. Tente `POST /auth/refresh` de novo com esse token recém-revogado —
+5. `POST /auth/logout` — envie o token novo retornado no passo 4.
+6. Tente `POST /auth/refresh` de novo com esse token recém-revogado —
    **deve retornar 401**. Isso prova que o logout realmente invalidou
    o token no banco, não é só "esquecer" ele no cliente.
 

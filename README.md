@@ -25,8 +25,9 @@ cliente).
 - **PostgreSQL** + **SQLAlchemy 2.0** (ORM, estilo `Mapped`/`mapped_column`)
 - **Alembic** — migrations versionadas
 - **Pydantic V2** — validação de entrada/saída
-- **JWT** (`python-jose`) + **bcrypt** (`passlib`) — autenticação e hash de senha
-- **Docker** + **Docker Compose** — API e banco containerizados
+- **JWT** (`PyJWT`) + **Argon2id** (`pwdlib`) — autenticação e hash de senha
+- **Redis** — limite de tentativas compartilhado entre réplicas
+- **Docker** + **Docker Compose** — API, banco e Redis containerizados
 - **Pytest** — testes unitários (funções puras) e de integração (HTTP + banco real)
 
 ## Arquitetura
@@ -81,6 +82,12 @@ banco sem tocar em `services/`.
   sistema.
 - **Revogação real de sessão**: logout marca o `jti` do refresh token
   como revogado no banco — não é só o cliente "esquecer" o token.
+- **Privilégio mínimo**: o cadastro público sempre cria um cliente;
+  contas administrativas são criadas somente pelo comando de bootstrap.
+- **Defesa contra abuso**: login, cadastro e renovação de token possuem
+  limites de tentativas, com Redis quando há múltiplas instâncias.
+- **Upload verificado**: tamanho, extensão e assinatura real do arquivo
+  são validados, e caminhos fora do diretório de uploads são recusados.
 
 ## Estrutura de pastas
 
@@ -117,6 +124,7 @@ sentry-maintenance-api/
 ├── docker-compose.yml
 ├── Dockerfile
 ├── requirements.txt
+├── requirements-dev.txt
 └── .env.example
 ```
 
@@ -130,14 +138,16 @@ cd sentry-maintenance-api
 cp .env.example .env
 ```
 
-Ajuste o `.env` se necessário (valores padrão já funcionam com o
-`docker-compose.yml` fornecido).
+Ajuste no `.env` a senha do PostgreSQL e a `SECRET_KEY`. A senha usada
+em `POSTGRES_PASSWORD` deve ser a mesma presente em `DATABASE_URL`.
 
 ## Como executar
 
 ```bash
 docker compose up --build -d
 docker compose exec api alembic upgrade head
+docker compose exec api python -m app.cli.create_admin \
+  --email admin@oficina.com --full-name "Administrador"
 ```
 
 A API sobe em `http://localhost:8000`.
@@ -167,9 +177,13 @@ docker compose down -v
 | `DATABASE_URL`                | String de conexão PostgreSQL                             | —                              |
 | `SECRET_KEY`                  | Chave de assinatura dos JWT (troque em produção!)         | —                              |
 | `ALGORITHM`                   | Algoritmo do JWT                                          | `HS256`                        |
+| `JWT_ISSUER`                  | Emissor esperado nos tokens                               | `sentry-maintenance-api`       |
+| `JWT_AUDIENCE`                | Audiência esperada nos tokens                             | `sentry-maintenance-clients`   |
 | `ACCESS_TOKEN_EXPIRE_MINUTES`  | Validade do access token                                  | `30`                            |
 | `REFRESH_TOKEN_EXPIRE_DAYS`   | Validade do refresh token                                 | `7`                              |
-| `CORS_ORIGINS`                | Origens permitidas (CORS)                                  | `*`                              |
+| `CORS_ORIGINS`                | Origens permitidas, separadas por vírgula                  | `*` apenas em desenvolvimento   |
+| `ALLOWED_HOSTS`               | Hosts HTTP permitidos, separados por vírgula               | `*` apenas em desenvolvimento   |
+| `RATE_LIMIT_REDIS_URL`        | Redis compartilhado para limitação de tentativas           | —                               |
 | `UPLOAD_DIR`                  | Diretório de armazenamento local de anexos                 | `app/uploads`                    |
 | `MAX_UPLOAD_SIZE_MB`          | Tamanho máximo de upload                                    | `10`                              |
 
@@ -179,7 +193,7 @@ docker compose down -v
 
 | Método | Rota            | Descrição                                    | Autenticado? |
 |--------|-----------------|-------------------------------------------------|--------------|
-| POST   | `/auth/register`| Cadastra novo usuário                            | Não          |
+| POST   | `/auth/register`| Cadastra novo usuário sempre como `cliente`       | Não          |
 | POST   | `/auth/login`   | Autentica e retorna access + refresh token       | Não          |
 | POST   | `/auth/refresh` | Gera novo par de tokens (rotaciona o refresh)    | Não          |
 | POST   | `/auth/logout`  | Revoga o refresh token informado                 | Não          |
@@ -274,16 +288,16 @@ Tipos aceitos: PDF, JPG, PNG, DOC, DOCX. `entidade_tipo` aceita:
 
 ## Exemplos de requisições
 
-**Registro + login:**
+**Registro de cliente + login:**
 
 ```bash
 curl -X POST http://localhost:8000/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"full_name": "Admin", "email": "admin@oficina.com", "password": "SenhaForte123", "role": "admin"}'
+  -d '{"full_name": "Cliente", "email": "cliente@oficina.com", "password": "SenhaForte123"}'
 
 curl -X POST http://localhost:8000/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email": "admin@oficina.com", "password": "SenhaForte123"}'
+  -d '{"email": "cliente@oficina.com", "password": "SenhaForte123"}'
 # → { "access_token": "...", "refresh_token": "...", "token_type": "bearer" }
 ```
 
@@ -324,7 +338,9 @@ curl -X POST http://localhost:8000/anexos \
 ## Como executar os testes
 
 ```bash
+python -m pip install -r requirements-dev.txt
 pytest -v
+pip-audit -r requirements.txt
 ```
 
 O projeto tem dois tipos de teste:
@@ -349,8 +365,8 @@ pytest app/tests/test_auth_flow.py -v
 pytest -k "schema" -v
 ```
 
-Dentro do ambiente Docker, os mesmos comandos podem ser executados com
-o prefixo `docker compose exec api`.
+As dependências de teste ficam separadas da imagem de produção para
+reduzir superfície de ataque e tamanho do contêiner.
 
 ## Deploy
 
@@ -359,7 +375,9 @@ Para um deploy real (fora do ambiente de desenvolvimento local), os
 pontos de atenção são:
 
 1. **Variáveis de ambiente**: gere uma `SECRET_KEY` forte
-   (`openssl rand -hex 32`), defina `DEBUG=False` e `APP_ENV=production`.
+   (`openssl rand -hex 32`), defina `DEBUG=False`, `APP_ENV=production`,
+   `ALLOWED_HOSTS` e origens CORS explícitas. A aplicação se recusa a
+   iniciar em produção com valores inseguros.
 2. **Banco de dados**: em produção, prefira um PostgreSQL gerenciado
    (RDS, Cloud SQL, etc.) em vez do container do `docker-compose.yml`
    (que é pensado para desenvolvimento local) — aponte `DATABASE_URL`
@@ -378,3 +396,5 @@ pontos de atenção são:
    termine TLS.
 6. **CORS**: restrinja `CORS_ORIGINS` ao domínio real do frontend em
    produção (nunca deixe `*` fora de desenvolvimento).
+7. **Escala horizontal**: use um Redis compartilhado em
+   `RATE_LIMIT_REDIS_URL`; não dependa do contador em memória.

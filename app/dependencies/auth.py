@@ -16,7 +16,7 @@ import uuid
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError
+from jwt.exceptions import PyJWTError
 from sqlalchemy.orm import Session
 
 from app.core.roles import UserRole
@@ -45,7 +45,7 @@ def get_current_user(
 
     try:
         payload = decode_token(credentials.credentials)
-    except JWTError:
+    except PyJWTError:
         raise credentials_exception
 
     if payload.get("type") != "access":
@@ -55,7 +55,12 @@ def get_current_user(
     if user_id is None:
         raise credentials_exception
 
-    user = UserRepository(db).get_by_id(uuid.UUID(user_id))
+    try:
+        user_uuid = uuid.UUID(user_id)
+    except (TypeError, ValueError):
+        raise credentials_exception
+
+    user = UserRepository(db).get_by_id(user_uuid)
     if user is None or not user.is_active:
         raise credentials_exception
 

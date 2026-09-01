@@ -8,7 +8,7 @@ HTTP (nada de HTTPException aqui) — levanta exceções de domínio
 import uuid
 from datetime import datetime, timezone
 
-from jose import JWTError
+from jwt.exceptions import PyJWTError
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import (
@@ -21,13 +21,18 @@ from app.core.security import (
     create_access_token,
     create_refresh_token,
     decode_token,
-    verify_password,
+    hash_password,
+    verify_and_update_password,
 )
 from app.models.user import User
 from app.repositories.refresh_token_repository import RefreshTokenRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.auth import TokenResponse
-from app.schemas.user import UserCreate
+from app.core.roles import UserRole
+from app.schemas.user import UserCreate, UserRegistration
+
+
+_DUMMY_PASSWORD_HASH = hash_password("comparacao-constante-para-usuario-ausente")
 
 
 class AuthService:
@@ -35,10 +40,12 @@ class AuthService:
         self.users = UserRepository(db)
         self.refresh_tokens = RefreshTokenRepository(db)
 
-    def register(self, data: UserCreate) -> User:
+    def register(self, data: UserRegistration) -> User:
         if self.users.get_by_email(data.email) is not None:
             raise UserAlreadyExistsError()
-        return self.users.create(data)
+        return self.users.create(
+            UserCreate(**data.model_dump(), role=UserRole.CLIENTE)
+        )
 
     def _issue_tokens(self, user: User) -> TokenResponse:
         access_token = create_access_token(subject=str(user.id), role=user.role.value)
@@ -48,22 +55,35 @@ class AuthService:
 
     def login(self, email: str, password: str) -> TokenResponse:
         user = self.users.get_by_email(email)
-        if user is None or not verify_password(password, user.hashed_password):
+        if user is None:
+            # Mantém custo semelhante ao login de uma conta existente e
+            # reduz enumeração de emails por diferença de tempo.
+            verify_and_update_password(password, _DUMMY_PASSWORD_HASH)
+            raise InvalidCredentialsError()
+        valid_password, updated_hash = verify_and_update_password(
+            password, user.hashed_password
+        )
+        if not valid_password:
             raise InvalidCredentialsError()
         if not user.is_active:
             raise InactiveUserError()
+        if updated_hash is not None:
+            self.users.update_password_hash(user, updated_hash)
         return self._issue_tokens(user)
 
     def refresh(self, refresh_token: str) -> TokenResponse:
         try:
             payload = decode_token(refresh_token)
-        except JWTError:
+        except PyJWTError:
             raise InvalidTokenError()
 
         if payload.get("type") != "refresh":
             raise InvalidTokenError()
 
-        jti = uuid.UUID(payload["jti"])
+        try:
+            jti = uuid.UUID(payload["jti"])
+        except (KeyError, TypeError, ValueError):
+            raise InvalidTokenError()
         stored = self.refresh_tokens.get_by_jti(jti)
 
         if stored is None or stored.revoked:
@@ -87,11 +107,14 @@ class AuthService:
     def logout(self, refresh_token: str) -> None:
         try:
             payload = decode_token(refresh_token)
-        except JWTError:
+        except PyJWTError:
             raise InvalidTokenError()
 
         if payload.get("type") != "refresh":
             raise InvalidTokenError()
 
-        jti = uuid.UUID(payload["jti"])
+        try:
+            jti = uuid.UUID(payload["jti"])
+        except (KeyError, TypeError, ValueError):
+            raise InvalidTokenError()
         self.refresh_tokens.revoke(jti)

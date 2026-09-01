@@ -23,13 +23,13 @@ class UserRepository:
         return self.db.get(User, user_id)
 
     def get_by_email(self, email: str) -> User | None:
-        stmt = select(User).where(User.email == email)
+        stmt = select(User).where(User.email == str(email).strip().lower())
         return self.db.scalar(stmt)
 
     def create(self, data: UserCreate) -> User:
         user = User(
             full_name=data.full_name,
-            email=data.email,
+            email=str(data.email).strip().lower(),
             hashed_password=hash_password(data.password),
             role=data.role,
         )
@@ -37,3 +37,8 @@ class UserRepository:
         self.db.commit()
         self.db.refresh(user)
         return user
+
+    def update_password_hash(self, user: User, hashed_password: str) -> None:
+        user.hashed_password = hashed_password
+        self.db.add(user)
+        self.db.commit()

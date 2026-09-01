@@ -32,11 +32,23 @@ class StorageBackend(ABC):
 
 class LocalStorageBackend(StorageBackend):
     def __init__(self, base_dir: str = settings.UPLOAD_DIR):
-        self.base_dir = Path(base_dir)
+        self.base_dir = Path(base_dir).resolve()
         self.base_dir.mkdir(parents=True, exist_ok=True)
 
+    def _safe_path(self, caminho_relativo: str) -> Path:
+        relative = Path(caminho_relativo)
+        if relative.is_absolute():
+            raise ValueError("Caminho absoluto não é permitido no armazenamento.")
+        candidate = (self.base_dir / relative).resolve()
+        if not candidate.is_relative_to(self.base_dir):
+            raise ValueError("Caminho fora do diretório de uploads.")
+        return candidate
+
     def save(self, content: bytes, subdir: str, filename: str) -> str:
-        destino_dir = self.base_dir / subdir
+        if Path(filename).name != filename or filename in {"", ".", ".."}:
+            raise ValueError("Nome de arquivo inválido.")
+
+        destino_dir = self._safe_path(subdir)
         destino_dir.mkdir(parents=True, exist_ok=True)
 
         nome_unico = f"{uuid.uuid4().hex}_{filename}"
@@ -48,11 +60,11 @@ class LocalStorageBackend(StorageBackend):
         return f"{subdir}/{nome_unico}"
 
     def delete(self, caminho_relativo: str) -> None:
-        caminho = self.base_dir / caminho_relativo
+        caminho = self._safe_path(caminho_relativo)
         caminho.unlink(missing_ok=True)
 
     def get_full_path(self, caminho_relativo: str) -> Path:
-        return self.base_dir / caminho_relativo
+        return self._safe_path(caminho_relativo)
 
 
 def get_storage_backend() -> StorageBackend:

@@ -4,6 +4,8 @@ Teste unitário do LocalStorageBackend.
 Usa um diretório temporário (fixture `tmp_path` do pytest) — não toca
 no diretório real de uploads da aplicação nem depende de banco.
 """
+import pytest
+
 from app.core.storage import LocalStorageBackend
 
 
@@ -40,3 +42,11 @@ def test_delete_de_arquivo_inexistente_nao_gera_erro(tmp_path):
     storage = LocalStorageBackend(base_dir=str(tmp_path))
     # missing_ok=True no unlink() garante que isso não levanta exceção.
     storage.delete("caminho/que/nao/existe.pdf")
+
+
+@pytest.mark.parametrize("caminho", ["../segredo.txt", "subdir/../../segredo.txt"])
+def test_storage_rejeita_path_traversal(tmp_path, caminho):
+    storage = LocalStorageBackend(base_dir=str(tmp_path / "uploads"))
+
+    with pytest.raises(ValueError):
+        storage.get_full_path(caminho)

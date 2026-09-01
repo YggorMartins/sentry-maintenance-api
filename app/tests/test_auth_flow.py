@@ -2,6 +2,20 @@
 from app.tests.helpers import SENHA_PADRAO, auth_headers, registrar_e_logar
 
 
+def test_registro_publico_nao_aceita_papel_privilegiado(client):
+    resp = client.post(
+        "/auth/register",
+        json={
+            "full_name": "Atacante",
+            "email": "atacante@teste.com",
+            "password": SENHA_PADRAO,
+            "role": "admin",
+        },
+    )
+
+    assert resp.status_code == 422
+
+
 def test_registro_login_e_me_retornam_dados_consistentes(client):
     token = registrar_e_logar(client, role="admin", email="admin@teste.com")
 
@@ -16,7 +30,7 @@ def test_registro_login_e_me_retornam_dados_consistentes(client):
 def test_login_com_senha_incorreta_retorna_401(client):
     client.post(
         "/auth/register",
-        json={"full_name": "Fulano", "email": "fulano@teste.com", "password": SENHA_PADRAO, "role": "cliente"},
+        json={"full_name": "Fulano", "email": "fulano@teste.com", "password": SENHA_PADRAO},
     )
     resp = client.post("/auth/login", json={"email": "fulano@teste.com", "password": "senhaErrada"})
     assert resp.status_code == 401
@@ -30,7 +44,7 @@ def test_me_sem_token_retorna_401(client):
 def test_refresh_gera_novo_par_e_revoga_o_antigo(client):
     client.post(
         "/auth/register",
-        json={"full_name": "Ciclano", "email": "ciclano@teste.com", "password": SENHA_PADRAO, "role": "admin"},
+        json={"full_name": "Ciclano", "email": "ciclano@teste.com", "password": SENHA_PADRAO},
     )
     login = client.post("/auth/login", json={"email": "ciclano@teste.com", "password": SENHA_PADRAO})
     refresh_token_original = login.json()["refresh_token"]
@@ -47,7 +61,7 @@ def test_refresh_gera_novo_par_e_revoga_o_antigo(client):
 def test_logout_revoga_refresh_token(client):
     client.post(
         "/auth/register",
-        json={"full_name": "Beltrano", "email": "beltrano@teste.com", "password": SENHA_PADRAO, "role": "admin"},
+        json={"full_name": "Beltrano", "email": "beltrano@teste.com", "password": SENHA_PADRAO},
     )
     login = client.post("/auth/login", json={"email": "beltrano@teste.com", "password": SENHA_PADRAO})
     refresh_token = login.json()["refresh_token"]

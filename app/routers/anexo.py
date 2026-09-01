@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
+from app.config.settings import settings
 from app.core.enums import TipoEntidadeAnexo
 from app.core.exceptions import (
     AnexoNotFoundError,
@@ -25,6 +26,19 @@ router = APIRouter(prefix="/anexos", tags=["Anexos"])
 pode_consultar = RoleChecker([UserRole.ADMIN, UserRole.INSPETOR, UserRole.MECANICO])
 pode_enviar = RoleChecker([UserRole.ADMIN, UserRole.INSPETOR, UserRole.MECANICO])
 pode_excluir = RoleChecker([UserRole.ADMIN, UserRole.INSPETOR])
+
+
+async def _read_limited_upload(file: UploadFile) -> bytes:
+    max_bytes = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+    content = bytearray()
+    try:
+        while chunk := await file.read(64 * 1024):
+            if len(content) + len(chunk) > max_bytes:
+                raise ArquivoInvalidoError()
+            content.extend(chunk)
+    finally:
+        await file.close()
+    return bytes(content)
 
 
 def _tratar_erros_de_negocio(exc: Exception):
@@ -53,8 +67,8 @@ async def upload_anexo(
     storage: StorageBackend = Depends(get_storage_backend),
     current_user: User = Depends(pode_enviar),
 ):
-    conteudo = await file.read()
     try:
+        conteudo = await _read_limited_upload(file)
         return AnexoService(db, storage).upload(
             entidade_tipo=entidade_tipo,
             entidade_id=entidade_id,
