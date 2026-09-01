@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 # Evita geração de arquivos .pyc e garante logs sem buffer (aparecem em tempo real)
 ENV PYTHONDONTWRITEBYTECODE=1 \
