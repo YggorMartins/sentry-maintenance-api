@@ -226,7 +226,7 @@ docker compose down -v
 | PATCH  | `/ordens-servico/{id}/status`  | Transição de status (máquina de estados)                  | admin, inspetor              |
 | DELETE | `/ordens-servico/{id}`         | Remove (só permitido em status `aberta`)                   | admin                        |
 
-M�quina de estados:
+Máquina de estados:
 
 ```
 aberta ──────► em_andamento ──────► concluida
@@ -324,7 +324,7 @@ curl -X POST http://localhost:8000/anexos \
 ## Como executar os testes
 
 ```bash
-docker compose exec api pytest -v
+pytest -v
 ```
 
 O projeto tem dois tipos de teste:
@@ -335,19 +335,22 @@ O projeto tem dois tipos de teste:
   — não tocam o banco, rodam em milissegundos.
 - **De integração** (`test_*_flow.py`): sobem a aplicação FastAPI
   completa e testam o fluxo real via HTTP (registro → login →
-  criação de recursos → regras de negócio). Rodam contra um **banco
-  de dados de testes dedicado** (`sentry_maintenance_test`, criado
-  automaticamente na primeira execução — não é o banco de
-  desenvolvimento), com cada teste isolado numa transação revertida
-  ao final. Cobrem Autenticação, Clientes, Aeronaves e Ordens de
+  criação de recursos → regras de negócio). Por padrão usam SQLite
+  em memória, portanto também rodam sem Docker. Para uma segunda
+  validação contra PostgreSQL, defina `TEST_DATABASE_URL` com a URL
+  de um banco dedicado; ele será criado automaticamente caso ainda
+  não exista. Cobrem Autenticação, Clientes, Aeronaves e Ordens de
   Serviço.
 
 Para rodar só uma categoria:
 
 ```bash
-docker compose exec api pytest app/tests/test_auth_flow.py -v
-docker compose exec api pytest -k "schema" -v
+pytest app/tests/test_auth_flow.py -v
+pytest -k "schema" -v
 ```
+
+Dentro do ambiente Docker, os mesmos comandos podem ser executados com
+o prefixo `docker compose exec api`.
 
 ## Deploy
 

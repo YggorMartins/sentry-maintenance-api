@@ -2,7 +2,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import func, select, text
+from sqlalchemy import Integer, cast, func, select, text
 from sqlalchemy.orm import Session
 
 from app.core.enums import StatusOS
@@ -20,7 +20,15 @@ class OrdemServicoRepository:
         gerar o número de forma atômica, mesmo sob requisições
         concorrentes — ver explicação completa na conversa da Etapa 4.
         """
-        valor = self.db.execute(text("SELECT nextval('os_numero_seq')")).scalar_one()
+        if self.db.get_bind().dialect.name == "postgresql":
+            valor = self.db.execute(text("SELECT nextval('os_numero_seq')")).scalar_one()
+        else:
+            # Fallback portátil para testes locais. Em produção, PostgreSQL
+            # continua usando a sequence atômica acima.
+            maior_numero = self.db.scalar(
+                select(func.max(cast(func.substr(OrdemServico.numero, 4), Integer)))
+            )
+            valor = (maior_numero or 0) + 1
         return f"OS-{valor:06d}"
 
     def get_by_id(self, os_id: uuid.UUID) -> OrdemServico | None:

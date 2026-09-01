@@ -18,9 +18,8 @@ class Settings(BaseSettings):
 
     # --- Banco de dados ---
     DATABASE_URL: str
-    # Opcional: se não definido, os testes derivam automaticamente um
-    # banco "<DATABASE_URL>_test" a partir do banco de desenvolvimento
-    # (ver app/tests/conftest.py).
+    # Opcional: se não definido, os testes de integração usam SQLite
+    # em memória. Informe uma URL para validá-los também no PostgreSQL.
     TEST_DATABASE_URL: str | None = None
 
     # --- Segurança / JWT ---

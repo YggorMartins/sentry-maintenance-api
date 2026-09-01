@@ -68,7 +68,12 @@ class AuthService:
 
         if stored is None or stored.revoked:
             raise InvalidTokenError()
-        if stored.expires_at < datetime.now(timezone.utc):
+        expires_at = stored.expires_at
+        if expires_at.tzinfo is None:
+            # Alguns drivers (notadamente SQLite) descartam o tzinfo ao
+            # desserializar DateTime. O valor persistido é sempre UTC.
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at < datetime.now(timezone.utc):
             raise InvalidTokenError()
 
         user = self.users.get_by_id(stored.user_id)
