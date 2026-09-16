@@ -1,5 +1,7 @@
 # Sentry Maintenance API
 
+> O dashboard web React/Tailwind está em [`frontend/`](frontend/) e o relatório da auditoria em [`AUDITORIA.md`](AUDITORIA.md).
+
 API REST para gestão de manutenção aeronáutica de uma oficina
 certificada — controle de clientes, aeronaves, motores, ordens de
 serviço, inspeções, estoque de peças e anexos digitais. Projeto de
@@ -29,6 +31,26 @@ cliente).
 - **Redis** — limite de tentativas compartilhado entre réplicas
 - **Docker** + **Docker Compose** — API, banco e Redis containerizados
 - **Pytest** — testes unitários (funções puras) e de integração (HTTP + banco real)
+- **React + TypeScript + Tailwind CSS** — dashboard responsivo integrado à API
+- **PyInstaller + pywebview** — aplicativo desktop nativo para Windows
+
+## Dashboard web
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+O modo de demonstração usa dados mockados. Para consumir a API real, copie
+`frontend/.env.example` para `frontend/.env` e defina `VITE_USE_MOCKS=false`.
+O token JWT de acesso é lido de `localStorage.sentry_access_token`.
+
+Antes de iniciar a API após atualizar uma instalação existente, aplique a migration:
+
+```bash
+alembic upgrade head
+```
 
 ## Arquitetura
 
@@ -123,8 +145,12 @@ sentry-maintenance-api/
 │   └── versions/                # migrations versionadas
 ├── docker-compose.yml
 ├── Dockerfile
+├── main_desktop.py             # inicialização da API e janela desktop
+├── build_windows.bat           # automação do build React + PyInstaller
+├── SentryMaintenance.spec      # configuração avançada do PyInstaller
 ├── requirements.txt
 ├── requirements-dev.txt
+├── requirements-desktop.txt
 └── .env.example
 ```
 
@@ -142,6 +168,25 @@ Ajuste no `.env` a senha do PostgreSQL e a `SECRET_KEY`. A senha usada
 em `POSTGRES_PASSWORD` deve ser a mesma presente em `DATABASE_URL`.
 
 ## Como executar
+
+### Desenvolvimento local com Uvicorn
+
+Crie e ative um ambiente virtual, instale as dependências e configure o `.env`:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+Copy-Item .env.example .env
+alembic upgrade head
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+A API estará disponível em `http://127.0.0.1:8000`. Em outro terminal,
+execute `npm run dev` dentro de `frontend` para desenvolver a interface com
+hot reload.
+
+### Docker
 
 ```bash
 docker compose up --build -d
@@ -165,6 +210,53 @@ Para parar e apagar os dados do banco:
 
 ```bash
 docker compose down -v
+```
+
+## Aplicativo desktop Windows
+
+O pacote desktop usa uma janela nativa do `pywebview`, inicia o FastAPI apenas
+em `127.0.0.1` e armazena banco SQLite, anexos e chave local em
+`%LOCALAPPDATA%\SentryMaintenance`. Portanto, o `.exe` não depende de
+PostgreSQL, Redis ou arquivo `.env` para abrir.
+
+Pré-requisitos para gerar o executável:
+
+- Windows 10/11;
+- Python 3.12 ou superior;
+- Node.js/npm;
+- Microsoft Edge WebView2 Runtime, normalmente já presente no Windows 10/11.
+
+No Prompt de Comando ou PowerShell, a partir da raiz do projeto:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements-desktop.txt
+cd frontend
+npm install
+cd ..
+.\build_windows.bat
+```
+
+O script executa, nesta ordem:
+
+1. `npm run build` em `frontend`;
+2. substituição de `app\static` pelo conteúdo de `frontend\dist`;
+3. PyInstaller em modo `--onedir --windowed` com os arquivos estáticos;
+4. geração de `dist\SentryMaintenance\SentryMaintenance.exe`.
+
+O arquivo `SentryMaintenance.spec`, gerado e mantido pelo PyInstaller, oferece
+a configuração equivalente. Depois de gerar o frontend e copiá-lo para
+`app\static`, ele também pode ser usado diretamente:
+
+```powershell
+pyinstaller --noconfirm SentryMaintenance.spec
+```
+
+Para depurar a inicialização desktop sem empacotar:
+
+```powershell
+python main_desktop.py
 ```
 
 ## Variáveis de ambiente
@@ -337,10 +429,10 @@ curl -X POST http://localhost:8000/anexos \
 
 ## Como executar os testes
 
-```bash
-python -m pip install -r requirements-dev.txt
-pytest -v
-pip-audit -r requirements.txt
+```powershell
+python -m pip install -r requirements.txt -r requirements-dev.txt
+python -m pytest -v --basetemp .pytest-tmp
+python -m pip_audit -r requirements.txt
 ```
 
 O projeto tem dois tipos de teste:

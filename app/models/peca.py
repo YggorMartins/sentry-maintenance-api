@@ -22,6 +22,8 @@ class Peca(Base, UUIDMixin, TimestampMixin):
     localizacao: Mapped[str | None] = mapped_column(String(100), nullable=True)
     lote: Mapped[str | None] = mapped_column(String(50), nullable=True)
     quantidade_atual: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    estoque_minimo: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    categoria: Mapped[str] = mapped_column(String(80), nullable=False, default="componente")
 
     def __repr__(self) -> str:
         return f"<Peca {self.codigo} qtd={self.quantidade_atual}>"

@@ -7,6 +7,7 @@ todos os routers de negócio construídos ao longo das Etapas 1-7.
 """
 import logging
 import time
+from pathlib import Path
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,7 +16,9 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.config.settings import settings
 from app.core.logging import setup_logging
+from app.core.spa import SPAStaticFiles
 from app.routers import aeronave as aeronave_router
+from app.routers import agendamento as agendamento_router
 from app.routers import anexo as anexo_router
 from app.routers import auth as auth_router
 from app.routers import cliente as cliente_router
@@ -24,6 +27,7 @@ from app.routers import motor as motor_router
 from app.routers import movimentacao as movimentacao_router
 from app.routers import ordem_servico as ordem_servico_router
 from app.routers import peca as peca_router
+from app.routers import dashboard as dashboard_router
 
 setup_logging()
 logger = logging.getLogger("sentry_api")
@@ -107,9 +111,18 @@ app.include_router(inspecao_router.router)
 app.include_router(peca_router.router)
 app.include_router(movimentacao_router.router)
 app.include_router(anexo_router.router)
+app.include_router(agendamento_router.router)
+app.include_router(dashboard_router.router)
 
 
 @app.get("/health", tags=["Health"])
 def health_check() -> dict:
     """Endpoint simples para verificar se a API e o processo estão de pé."""
     return {"status": "ok", "app": settings.APP_NAME, "env": settings.APP_ENV}
+
+
+# O build React é opcional no desenvolvimento e obrigatório no pacote desktop.
+# O mount fica por último para não interceptar rotas da API e do Swagger.
+static_dir = Path(__file__).resolve().parent / "static"
+if (static_dir / "index.html").is_file():
+    app.mount("/", SPAStaticFiles(directory=static_dir, html=True), name="frontend")

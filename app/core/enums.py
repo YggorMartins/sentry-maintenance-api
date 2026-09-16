@@ -42,6 +42,35 @@ class TipoMovimentacao(str, enum.Enum):
     SAIDA = "saida"
 
 
+class TipoManutencao(str, enum.Enum):
+    PREVENTIVA = "preventiva"
+    CORRETIVA = "corretiva"
+    INSPECAO = "inspecao"
+    PREDITIVA = "preditiva"
+
+
+class CategoriaManutencao(str, enum.Enum):
+    AVIONICOS = "avionicos"
+    MECANICA = "mecanica"
+    ESTRUTURA = "estrutura"
+    MOTOR = "motor"
+
+
+class RecorrenciaManutencao(str, enum.Enum):
+    NENHUMA = "nenhuma"
+    SEMANAL = "semanal"
+    MENSAL = "mensal"
+    TRIMESTRAL = "trimestral"
+    ANUAL = "anual"
+
+
+class StatusAgendamento(str, enum.Enum):
+    AGENDADO = "agendado"
+    CONFIRMADO = "confirmado"
+    CONCLUIDO = "concluido"
+    CANCELADO = "cancelado"
+
+
 class TipoEntidadeAnexo(str, enum.Enum):
     AERONAVE = "aeronave"
     ORDEM_SERVICO = "ordem_servico"

@@ -118,3 +118,7 @@ class RateLimitExceededError(Exception):
 
 class RateLimitBackendUnavailableError(Exception):
     """O backend distribuído de rate limiting não está disponível."""
+
+
+class AgendamentoNotFoundError(Exception):
+    """Agendamento de manutenção não encontrado."""

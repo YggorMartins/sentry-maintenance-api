@@ -17,6 +17,8 @@ class PecaBase(BaseModel):
     valor: float = Field(ge=0)
     localizacao: str | None = Field(default=None, max_length=100)
     lote: str | None = Field(default=None, max_length=50)
+    estoque_minimo: int = Field(default=0, ge=0)
+    categoria: str = Field(default="componente", min_length=2, max_length=80)
 
 
 class PecaCreate(PecaBase):

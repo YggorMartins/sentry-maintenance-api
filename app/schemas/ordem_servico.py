@@ -12,7 +12,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.core.enums import StatusOS
+from app.core.enums import CategoriaManutencao, StatusOS, TipoManutencao
 
 
 class OrdemServicoCreate(BaseModel):
@@ -21,6 +21,10 @@ class OrdemServicoCreate(BaseModel):
     mecanico_id: uuid.UUID | None = None
     inspetor_id: uuid.UUID | None = None
     descricao: str = Field(min_length=5)
+    tipo_manutencao: TipoManutencao = TipoManutencao.CORRETIVA
+    categoria: CategoriaManutencao = CategoriaManutencao.MECANICA
+    custo_estimado: float = Field(default=0, ge=0)
+    prazo: datetime | None = None
     observacoes: str | None = None
 
 
@@ -29,6 +33,10 @@ class OrdemServicoUpdate(BaseModel):
     mecanico_id: uuid.UUID | None = None
     inspetor_id: uuid.UUID | None = None
     descricao: str = Field(min_length=5)
+    tipo_manutencao: TipoManutencao = TipoManutencao.CORRETIVA
+    categoria: CategoriaManutencao = CategoriaManutencao.MECANICA
+    custo_estimado: float = Field(default=0, ge=0)
+    prazo: datetime | None = None
     horas_trabalhadas: float = Field(default=0, ge=0)
     observacoes: str | None = None
 
@@ -45,6 +53,10 @@ class OrdemServicoOut(BaseModel):
     mecanico_id: uuid.UUID | None
     inspetor_id: uuid.UUID | None
     descricao: str
+    tipo_manutencao: TipoManutencao
+    categoria: CategoriaManutencao
+    custo_estimado: float
+    prazo: datetime | None
     status: StatusOS
     data_abertura: datetime
     data_fechamento: datetime | None

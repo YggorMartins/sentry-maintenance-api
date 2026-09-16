@@ -12,7 +12,7 @@ from sqlalchemy import DateTime, Enum, ForeignKey, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.enums import StatusOS
+from app.core.enums import CategoriaManutencao, StatusOS, TipoManutencao
 from app.database.session import Base
 from app.models.mixins import TimestampMixin, UUIDMixin
 
@@ -36,6 +36,18 @@ class OrdemServico(Base, UUIDMixin, TimestampMixin):
     )
 
     descricao: Mapped[str] = mapped_column(Text, nullable=False)
+    tipo_manutencao: Mapped[TipoManutencao] = mapped_column(
+        Enum(TipoManutencao, name="tipo_manutencao", values_callable=lambda enum_cls: [e.value for e in enum_cls]),
+        nullable=False,
+        default=TipoManutencao.CORRETIVA,
+    )
+    categoria: Mapped[CategoriaManutencao] = mapped_column(
+        Enum(CategoriaManutencao, name="categoria_manutencao", values_callable=lambda enum_cls: [e.value for e in enum_cls]),
+        nullable=False,
+        default=CategoriaManutencao.MECANICA,
+    )
+    custo_estimado: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, default=0)
+    prazo: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     status: Mapped[StatusOS] = mapped_column(
         Enum(StatusOS, name="status_os", values_callable=lambda enum_cls: [e.value for e in enum_cls]),
         nullable=False,
